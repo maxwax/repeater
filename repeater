@@ -1,0 +1,266 @@
+#!/bin/bash
+
+#
+# Repeater aides in performing extended runs of simultaneous benchmarking applications
+#
+# Repeater starts n copies of a benchmarking app simultaneously
+# It captures the output of each process as well as the time required to complete it
+# When all spawned processes have completed, it repeats this process again
+#
+
+VERSION="2014.0508.01"
+
+#
+# Command Line Syntax
+#
+
+# Display syntax
+function usage {
+	echo "repeater $VERSION"
+	echo
+	echo "usage: repeater <options>"
+	echo
+	echo "--help            Display this syntax information"
+	echo
+	echo "--debug           Enable debugging output."
+	echo
+	echo "--copies <n>      The number of simultaneous apps to launch. Default is CPU count"
+	echo "--launchwait <n>  After launching apps, wait n seconds before monitoring apps"
+	echo "--monitorwait <n> After checking each app, wait n seconds before checking again."
+	echo
+	echo "--appcli <command> [parameters] - Launch a custom app with custom parameters"
+	echo
+}
+
+#
+# Defaults
+#
+
+# Set bash 'time' pipeline command output format to one line:
+TIMEFORMAT="Real %R User %U System %S CPU %P"
+
+# Count the number of processors installed
+COPIES_COUNT=$(grep -c processor /proc/cpuinfo)
+
+echo "I see $COPIES_COUNT processors on this system."
+
+# Directory for log files
+OUTPUT_DIR=repeater-logs
+
+# Filename prefix for output of individual benchmark applications
+PROGRAM_LOGS=app-output
+
+# Filename prefix for output of time logging for benchmark apps
+TIME_LOGS=time-output
+
+# Default filename prefix
+TEST_SET="def"
+
+# Set to default: Don't provide parameters to benchmark applications
+USE_PARAMS=false
+
+# Pause after launching apps and starting the process of monitoring them
+LAUNCH_SLEEP_SECONDS=15
+
+# Pause before each iteration of monitoring launched apps
+WATCH_SLEEP_SECONDS=5
+
+# Dummy benchmarking app for testing
+APP_CLI="sleep 30"
+
+# Declare JOB_ID as an array
+declare -a JOB_ID
+
+# If we don't have an output directory, let's make one
+if [[ ! -d "${OUTPUT_DIR}" ]]
+then
+	# Make the directory
+	mkdir "${OUTPUT_DIR}"
+
+	# Check to see if we encountered errors making it
+	if [[ $? != 0 ]]
+	then
+		echo "Unable to create ${OUTPUT_DIR} directory"
+		exit 1
+	fi
+fi
+
+# Try to write to a log file in our output directory.
+echo "This is just a test" > $OUTPUT_DIR/testfile.deleteme
+if [[ $? != 0 ]]
+then
+	echo "I can't write to data files in $OUTPUT_DIR"
+	exit 1
+else
+	rm $OUTPUT_DIR/testfile.deleteme
+fi
+
+#
+# Command Line Options Processing
+#
+
+while [ "$1" != "" ]
+do
+
+	# Process the next command line argument
+	case $1 in 
+
+		# enable debugging output
+		-d | --debug )
+			DEBUG=true;;
+
+		# Passed to UnixBench's 'Run' script. # of copies to run in parallel
+		# set above to default number of logical processors presented to OS
+		-c | --copies)
+			shift
+			COPIES_COUNT=$1
+			echo "$COPIES_COUNT applications will be launched simultaneously per --copies option";;
+
+		--params)
+			USE_PARAMS=true;;
+
+		--outer)
+			shift
+			OUTER_RUNS=$1;;
+
+		--inner)
+			shift
+			INNER_RUNS=$1;;
+
+		--name)
+			shift
+			TEST_SET=$1;;
+
+		--launchwait)
+			shift
+			TEST_SET=$1;;
+
+		--monitorwait)
+			shift
+			TEST_SET=$1;;
+
+		--appcli)
+			shift
+			APP_CLI=$1
+			echo "Using '$APP_CLI' to launch applications";;
+
+		# Provide the user with help
+		-h | --help )
+		usage
+		exit 1;;
+
+		# Something we don't understand? show syntax and exit
+		* )
+		usage
+		exit 1;;
+	esac
+	shift
+done
+
+# Report variables after CLI processing for debugging
+if [[ $DEBUG == true ]]
+then
+	echo "TIMEFORMAT is '$TIMEFORMAT'"
+
+	echo "Launching $COPIES_COUNT background applications"
+	echo
+	echo "Output directory is $OUTPUT_DIR"
+	echo
+	echo "App logs will be prefixed with '$PROGRAM_LOGS'"
+	echo "Time logs will be prefixed with '$TIME_LOGS'"
+	echo
+	echo "Log files will include the test set phrase '$TEST_SET'"
+	echo
+	echo "Benchmarking command: '$APP_CLI'"
+	echo
+fi
+
+# Repeat until we see ${OUTPUT_DIR}/stop.looping
+while [[ ! -f ${OUTPUT_DIR}/stop.looping ]]
+do
+
+	# Iterate up to the number of times required, starting and tracking a benchmark app each time
+	for ((COUNT=1; COUNT <= $COPIES_COUNT; COUNT++))
+	do
+
+		# null out this array element
+		JOB_ID[$COUNT]=0
+
+		# Record the date/time to this 
+		echo -n $(date) >> ${OUTPUT_DIR}/${TIME_LOGS}.${TEST_SET}.${COUNT}
+		echo -n "     " >> ${OUTPUT_DIR}/${TIME_LOGS}.${TEST_SET}.${COUNT}
+
+		# Execute our benchmark app sending the output to something like repeater/app-output.set1.1
+		# Capture time output to something like repeater/time-output.set1.1
+
+		{ time ${APP_CLI} > ${OUTPUT_DIR}/${PROGRAM_LOGS}.${TEST_SET}.${COUNT} ; } 2>> ${OUTPUT_DIR}/${TIME_LOGS}.${TEST_SET}.${COUNT} &
+
+		JOB_ID[$COUNT]=$!
+
+		if [[ $DEBUG == true ]]
+		then
+			echo "The last job was ${JOB_ID[$COUNT]}"
+		fi
+
+		# Show the process without the header
+		ps hf -p ${JOB_ID[$COUNT]} --ppid ${JOB_ID[$COUNT]}
+
+	done
+
+	echo "Sleeping $LAUNCH_SLEEP_SECONDS seconds before monitoring starts.."
+	sleep $LAUNCH_SLEEP_SECONDS
+
+	printf "\nDo we still have processes running?\n"
+
+	# Set to true going into loop
+	PROCESSES_RUNNING=true
+
+	# Keep looping until 
+	while [[ $PROCESSES_RUNNING == true ]]
+	do
+
+		# Set to false, and flip to true when we see any process still running
+		PROCESSES_RUNNING=false
+	
+		# Cycle through our process array and see if each process is still running
+		for ((COUNT=1; COUNT <= $COPIES_COUNT; COUNT++))
+		do
+
+			# If the array element has a valid process value, let's check it
+			if [[ ${JOB_ID[$COUNT]} != 0 ]]
+			then
+
+				# Call ps to see if process is still running, strip header and count output lines via -c
+				if [[ $(ps -p ${JOB_ID[$COUNT]} | grep -c -v TIME) -eq 1 ]]
+				then
+				
+					if [[ $DEBUG == true ]]
+					then
+						echo "Process $COUNT as ${JOB_ID[$COUNT]} continues to run:"
+					fi
+
+					ps hf -p ${JOB_ID[$COUNT]} --ppid ${JOB_ID[$COUNT]}
+
+					# Set to true so we keep monitoring after this sweep
+					PROCESSES_RUNNING=true
+				fi
+
+			fi
+
+		done
+
+		if [[ $PROCESSES_RUNNING == true ]]
+		then
+
+			echo "Sleeping $WATCH_SLEEP_SECONDS seconds before checking again.."
+			sleep $WATCH_SLEEP_SECONDS
+		else
+			echo "All launched processes have completed.  Looping again."
+		fi
+
+	done
+
+done
+
+echo "File ${OUTPUT_DIR}/stop.looping observed. Exiting testing loop."
+exit 
