@@ -8,7 +8,7 @@
 # When all spawned processes have completed, it repeats this process again
 #
 
-VERSION="2014.0508.01"
+VERSION="2014.0509.01"
 
 #
 # Command Line Syntax
@@ -45,7 +45,7 @@ COPIES_COUNT=$(grep -c processor /proc/cpuinfo)
 echo "I see $COPIES_COUNT processors on this system."
 
 # Directory for log files
-OUTPUT_DIR=repeater-logs
+OUTPUT_DIR=results-logs
 
 # Filename prefix for output of individual benchmark applications
 PROGRAM_LOGS=app-output
@@ -175,25 +175,29 @@ then
 	echo
 fi
 
-# Repeat until we see ${OUTPUT_DIR}/stop.looping
-while [[ ! -f ${OUTPUT_DIR}/stop.looping ]]
+# Repeat until we see ${OUTPUT_DIR}/stop.repeating
+while [[ ! -f ${OUTPUT_DIR}/stop.repeating ]]
 do
 
 	# Iterate up to the number of times required, starting and tracking a benchmark app each time
 	for ((COUNT=1; COUNT <= $COPIES_COUNT; COUNT++))
 	do
 
+		echo "LAUNCHING NEW SET      $(date)"
+
 		# null out this array element
 		JOB_ID[$COUNT]=0
 
-		# Record the date/time to this 
-		echo -n $(date) >> ${OUTPUT_DIR}/${TIME_LOGS}.${TEST_SET}.${COUNT}
-		echo -n "     " >> ${OUTPUT_DIR}/${TIME_LOGS}.${TEST_SET}.${COUNT}
+		# Record date-time on new line in time log; No newline, execution time results will be added
+		echo -n "$(date)     " >> ${OUTPUT_DIR}/${TIME_LOGS}.${TEST_SET}.${COUNT}
+
+		# Record date-time on new line in application log.  Add new line, nothing to append.
+		echo "$(date)     " >> ${OUTPUT_DIR}/${PROGRAM_LOGS}.${TEST_SET}.${COUNT}
 
 		# Execute our benchmark app sending the output to something like repeater/app-output.set1.1
 		# Capture time output to something like repeater/time-output.set1.1
 
-		{ time ${APP_CLI} > ${OUTPUT_DIR}/${PROGRAM_LOGS}.${TEST_SET}.${COUNT} ; } 2>> ${OUTPUT_DIR}/${TIME_LOGS}.${TEST_SET}.${COUNT} &
+		{ time ${APP_CLI} >> ${OUTPUT_DIR}/${PROGRAM_LOGS}.${TEST_SET}.${COUNT} ; } 2>> ${OUTPUT_DIR}/${TIME_LOGS}.${TEST_SET}.${COUNT} &
 
 		JOB_ID[$COUNT]=$!
 
@@ -207,6 +211,7 @@ do
 
 	done
 
+	echo -n "$(date)     "
 	echo "Sleeping $LAUNCH_SLEEP_SECONDS seconds before monitoring starts.."
 	sleep $LAUNCH_SLEEP_SECONDS
 
@@ -252,6 +257,7 @@ do
 		if [[ $PROCESSES_RUNNING == true ]]
 		then
 
+			echo -n "$(date)     "
 			echo "Sleeping $WATCH_SLEEP_SECONDS seconds before checking again.."
 			sleep $WATCH_SLEEP_SECONDS
 		else
@@ -262,5 +268,5 @@ do
 
 done
 
-echo "File ${OUTPUT_DIR}/stop.looping observed. Exiting testing loop."
+echo "File ${OUTPUT_DIR}/stop.repeating observed. Exiting testing loop."
 exit 
