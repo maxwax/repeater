@@ -1,10 +1,12 @@
 #!/bin/bash
 
 #
-# Repeater aides in performing extended runs of simultaneous benchmarking applications
+# Repeater aides in performing extended runs of simultaneous
+# benchmarking applications
 #
 # Repeater starts n copies of a benchmarking app simultaneously
-# It captures the output of each process as well as the time required to complete it
+# It captures the output of each process as well as the time required
+# to complete it
 # When all spawned processes have completed, it repeats this process again
 #
 
@@ -41,8 +43,6 @@ TIMEFORMAT="Real %R User %U System %S CPU %P"
 
 # Count the number of processors installed
 COPIES_COUNT=$(grep -c processor /proc/cpuinfo)
-
-echo "I see $COPIES_COUNT processors on this system."
 
 # Directory for log files
 OUTPUT_DIR=results-logs
