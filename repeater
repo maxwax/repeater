@@ -27,6 +27,7 @@ function usage {
 	echo "--debug           Enable debugging output."
 	echo
 	echo "--copies <n>      The number of simultaneous apps to launch. Default is CPU count"
+	echo "--name <keyword>  A keyword inserted into the filenames of output files."
 	echo "--launchwait <n>  After launching apps, wait n seconds before monitoring apps"
 	echo "--monitorwait <n> After checking each app, wait n seconds before checking again."
 	echo
@@ -116,17 +117,6 @@ do
 			COPIES_COUNT=$1
 			echo "$COPIES_COUNT applications will be launched simultaneously per --copies option";;
 
-		--params)
-			USE_PARAMS=true;;
-
-		--outer)
-			shift
-			OUTER_RUNS=$1;;
-
-		--inner)
-			shift
-			INNER_RUNS=$1;;
-
 		--name)
 			shift
 			TEST_SET=$1;;
@@ -176,7 +166,7 @@ then
 fi
 
 # Repeat until we see ${OUTPUT_DIR}/stop.repeating
-while [[ ! -f ${OUTPUT_DIR}/stop.repeating ]]
+while [[ ! -f ${OUTPUT_DIR}/stop.repeating && ! -f ${OUTPUT_DIR}/stop-repeating ]]
 do
 
 	# Iterate up to the number of times required, starting and tracking a benchmark app each time
